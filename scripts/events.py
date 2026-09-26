@@ -80,7 +80,7 @@ class Events:
         """
         game.cur_events_list = []
         game.herb_events_list = []
-        game.freshkill_events_list = []
+        game.freshkill_event_list = []
         game.mediated = []
         switch_set_value(Switch.saved_clan, False)
         self.new_cat_invited = False
@@ -309,6 +309,13 @@ class Events:
                 game.save_events()
             except:
                 SaveError(traceback.format_exc())
+
+        # Export current moon events after all processing is complete
+        if get_clan_setting("export moon events"):
+            try:
+                game.export_current_moon_events()
+            except Exception:
+                pass
 
     def handle_future_events(self):
         """
