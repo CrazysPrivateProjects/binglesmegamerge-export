@@ -5,6 +5,9 @@ import pygame_gui
 from scripts.cat.cats import Cat
 from scripts.game_structure.game_essentials import game
 from scripts.game_structure.screen_settings import MANAGER
+from scripts.game_structure.ui_elements import UISurfaceImageButton
+from scripts.ui.generate_button import get_button_dict, ButtonStyles
+from scripts.ui.export_allegiances import ExportAllegiancesWindow
 from scripts.utility import (
     get_text_box_theme,
     ui_scale,
@@ -27,11 +30,18 @@ class AllegiancesScreen(Screens):
         self.ranks_boxes = None
         self.scroll_container = None
         self.heading = None
+        self.export_button = None
+        self.export_window = None
 
     def handle_event(self, event):
         if event.type == pygame_gui.UI_BUTTON_START_PRESS:
             self.menu_button_pressed(event)
             self.mute_button_pressed(event)
+
+            if self.export_button and event.ui_element == self.export_button:
+                if self.export_window is not None:
+                    self.export_window.kill()
+                self.export_window = ExportAllegiancesWindow(manager=MANAGER)
 
     def on_use(self):
         super().on_use()
@@ -47,6 +57,20 @@ class AllegiancesScreen(Screens):
             manager=MANAGER,
             anchors={"centerx": "centerx"},
         )
+
+        # Export Allegiances Button
+        export_rect = ui_scale(pygame.Rect((0, 0), (140, 30)))
+        export_rect.topright = ui_scale_offset((-35, 120))
+        self.export_button = UISurfaceImageButton(
+            export_rect,
+            "Export Allegiances",
+            get_button_dict(ButtonStyles.SQUOVAL, (140, 30)),
+            manager=MANAGER,
+            object_id=pygame_gui.core.ObjectID(class_id="@image_button", object_id=None),
+            starting_height=5,
+            anchors={"top": "top", "right": "right"},
+        )
+        
 
         # Set Menu Buttons.
         self.show_menu_buttons()
@@ -102,6 +126,15 @@ class AllegiancesScreen(Screens):
             self.names_boxes[-1].disable()
 
     def exit_screen(self):
+        if self.export_window is not None:
+            self.export_window.kill()
+            self.export_window = None
+
+        if self.export_button is not None:
+            self.export_button.kill()
+            del self.export_button
+            self.export_button = None
+
         for x in self.ranks_boxes:
             x.kill()
         del self.ranks_boxes
@@ -295,7 +328,6 @@ class AllegiancesScreen(Screens):
                 0
             ] = f"<b><u>{i18n.t('general.queen', count=2).upper()} AND {i18n.t('general.kit', count=2).upper()}</u></b>"
 
-            # This one is a bit different.  First all the queens, and the kits they are caring for.
             all_entries = []
             for q in queen_dict:
                 queen = Cat.fetch_cat(q)
@@ -323,7 +355,6 @@ class AllegiancesScreen(Screens):
                     )
                 all_entries.append(self.generate_one_entry(queen, kittens))
 
-            # Now kittens without carers
             for k in living_kits:
                 all_entries.append(
                     event_text_adjust(
