@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: ascii -*-
+import datetime
 import logging
 import random
 from copy import deepcopy
 from itertools import repeat
 from os.path import exists as path_exists
+from pathlib import Path
 from random import choice, randint, choices
 from typing import List, Tuple, Optional, Union
 
@@ -54,6 +56,7 @@ class Patrol:
         self.patrol_apprentices = []
         self.other_clan = None
         self.intro_text = ""
+        self.patrol_type = None
 
         self.patrol_statuses = {}
         self.patrol_status_list = []
@@ -87,6 +90,7 @@ class Patrol:
 
     def setup_patrol(self, patrol_cats: List[Cat], patrol_type: str) -> str:
         # Add cats
+        self.patrol_type = patrol_type
 
         chosen_biome = game.clan.biome
         if game.clan.secondary_biome != game.clan.biome:
@@ -152,7 +156,8 @@ class Patrol:
 
         Patrol.used_patrols.append(self.patrol_event.patrol_id)
 
-        return self.process_text(self.patrol_event.intro_text, None)
+        self.intro_text = self.process_text(self.patrol_event.intro_text, None)
+        return self.intro_text
 
     def proceed_patrol(self, path: str = "proceed") -> Tuple[str, str, Optional[str]]:
         """Proceed the patrol to the next step.
@@ -163,11 +168,113 @@ class Patrol:
                 print(
                     f"PATROL ID: {self.patrol_event.patrol_id} | SUCCESS: N/A (did not proceed)"
                 )
-                return self.process_text(self.patrol_event.decline_text, None), "", None
+                outcome_text = self.process_text(self.patrol_event.decline_text, None)
+                effect_text = ""
+                art = None
+                self.save_patrol_log(path=path, outcome_text=outcome_text, effect_text=effect_text)
+                return outcome_text, effect_text, art
             else:
                 return "Error - no event chosen", "", None
 
-        return self.determine_outcome(antagonize=(path == "antag"))
+        outcome = self.determine_outcome(antagonize=(path == "antag"))
+        outcome_text = outcome[0] if len(outcome) > 0 else ""
+        effect_text = outcome[1] if len(outcome) > 1 else ""
+        self.save_patrol_log(path=path, outcome_text=outcome_text, effect_text=effect_text)
+        return outcome
+
+    def _get_log_dir(self, clan_prefix: str) -> Path:
+        """Finds or creates the saves/clanprefix/logs directory."""
+        direct = Path("saves") / clan_prefix / "logs"
+        if (Path("saves") / clan_prefix).exists():
+            return direct
+
+        # Search parent directories in case the current working directory differs
+        for parent in Path(__file__).resolve().parents:
+            target = parent / "saves" / clan_prefix
+            if target.exists():
+                return target / "logs"
+
+        return direct
+
+    def save_patrol_log(self, path: str, outcome_text: str, effect_text: Union[str, list, tuple]) -> None:
+        """Saves a markdown log of the completed patrol into saves/clanprefix/logs."""
+        try:
+            clan_prefix = (
+                str(game.clan.name)
+                if (hasattr(game, "clan") and game.clan and hasattr(game.clan, "name"))
+                else "clan"
+            )
+            log_dir = self._get_log_dir(clan_prefix)
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+            # 1. Patrol Type
+            patrol_type_display = (
+                self.patrol_type.replace("_", " ").capitalize()
+                if self.patrol_type
+                else "General"
+            )
+            if patrol_type_display.lower() == "med":
+                patrol_type_display = "Medicine"
+
+            # 2. Patrol Leader
+            leader_name = str(self.patrol_leader.name) if self.patrol_leader else "Unknown"
+
+            # 3. Patrol Members
+            other_members = [
+                str(c.name) for c in self.patrol_cats if c != self.patrol_leader
+            ]
+            members_str = ", ".join(other_members) if other_members else "N/A"
+
+            # 4. Patrol Start
+            start_text = self.intro_text.strip() if self.intro_text else "N/A"
+
+            # 5. Action Taken
+            action_map = {
+                "proceed": "**PROCEED**",
+                "antag": "**ANTAGONIZE**",
+                "decline": "**DECLINE**",
+            }
+            action_str = action_map.get(str(path).lower(), f"**{str(path).upper()}**")
+
+            # 6. Patrol Outcome
+            outcome_str = outcome_text.strip() if outcome_text else "N/A"
+
+            # 7. Patrol Effects
+            if isinstance(effect_text, (list, tuple)):
+                effects_str = "\n".join(str(e).strip() for e in effect_text if str(e).strip())
+            else:
+                effects_str = str(effect_text).strip() if effect_text else ""
+            if not effects_str:
+                effects_str = "None"
+
+            content = (
+                f"**Patrol type:** {patrol_type_display}\n"
+                f"**Patrol leader:** {leader_name}\n"
+                f"**Patrol members:** {members_str}\n"
+                f"**Patrol start:** {start_text}\n"
+                f"{action_str}\n"
+                f"**Patrol outcome:** {outcome_str}\n"
+                f"**Patrol effects:** {effects_str}\n"
+            )
+
+            # Filename formatting
+            moon = getattr(game.clan, "age", getattr(game.clan, "clanage", None))
+            moon_prefix = f"moon{moon}_" if moon is not None else ""
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = f"patrol_{moon_prefix}{timestamp}"
+            file_path = log_dir / f"{base_name}.md"
+
+            counter = 1
+            while file_path.exists():
+                file_path = log_dir / f"{base_name}_{counter}.md"
+                counter += 1
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            print(f"Patrol log saved to: {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save patrol log: {e}", exc_info=True)
 
     def add_patrol_cats(self, patrol_cats: List[Cat], clan: Clan) -> None:
         """Add the list of cats to the patrol class and handles to set all needed values.
