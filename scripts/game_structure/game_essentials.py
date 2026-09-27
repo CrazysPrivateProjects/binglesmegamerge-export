@@ -153,12 +153,12 @@ class Game:
         safe_save(f"{get_save_dir()}/{game.clan.name}/events.json", events_list)
 
     def export_current_moon_events():
-        """
-        Export all events for the current moon into a readable text file under the clan's event_logs folder.
-        Includes patrol logs, ceremonies, interactions, herb logs, and freshkill logs organized by category.
-        """
-        if not clan:
-            return
+    """
+    Export all events for the current moon into a readable text file under the clan's event_logs folder.
+    Includes patrol logs, ceremonies, interactions, herb logs, and freshkill logs organized by category.
+    """
+    if not clan:
+        return
 
     from scripts.clan_package.settings import get_clan_setting
     from scripts.cat.cats import Cat
