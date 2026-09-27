@@ -18,6 +18,7 @@ from scripts.game_structure.ui_elements import (
     UIModifiedScrollingContainer,
 )
 from scripts.housekeeping.datadir import open_data_dir
+from scripts.ui.export_thoughts import ExportThoughtsWindow
 from scripts.utility import (
     get_text_box_theme,
     ui_scale,
@@ -46,22 +47,15 @@ class ClanSettingsScreen(Screens):
 
     sub_menu = "general"
 
-    # This is set to the current settings when the screen is opened.
-    # All edits are made directly to settings, however, when you
-    #  leave the screen, settings will be reverted based on this variable
-    #   However, if settings are saved, edits will also be made to this variable.
     settings_at_open = {}
-
-    # Have the settings been changed since the page was open or since settings were saved?
     settings_changed = False
-
-    # Contains the checkboxes
     checkboxes = {}
-    # Contains the text for the checkboxes.
     checkboxes_text = {}
 
     def __init__(self, name):
         super().__init__(name)
+        self.export_thoughts_button = None
+        self.export_thoughts_window = None
         self.opens = {
             "general": self.open_general_settings,
             "relation": self.open_relation_settings,
@@ -70,9 +64,6 @@ class ClanSettingsScreen(Screens):
         }
 
     def handle_event(self, event):
-        """
-        TODO: DOCS
-        """
         if event.type == pygame_gui.UI_TEXT_BOX_LINK_CLICKED:
             if platform.system() == "Darwin":
                 subprocess.Popen(["open", "-u", event.link_target])
@@ -98,20 +89,26 @@ class ClanSettingsScreen(Screens):
             elif event.ui_element == self.clan_stats_button:
                 self.open_clan_stats()
                 return
+            elif (
+                hasattr(self, "export_thoughts_button")
+                and self.export_thoughts_button is not None
+                and event.ui_element == self.export_thoughts_button
+            ):
+                if hasattr(self, "export_thoughts_window") and self.export_thoughts_window is not None:
+                    self.export_thoughts_window.kill()
+                self.export_thoughts_window = ExportThoughtsWindow(manager=MANAGER)
+                return
+
             self.handle_checkbox_events(event)
             self.menu_button_pressed(event)
             self.mute_button_pressed(event)
 
     def handle_checkbox_events(self, event):
-        """
-        TODO: DOCS
-        """
         if event.ui_element in self.checkboxes.values():
             for key, value in self.checkboxes.items():
                 if value == event.ui_element:
                     switch_clan_setting(key)
                     self.settings_changed = True
-                    # self.update_save_button()
 
                     scroll_pos = None
                     if (
@@ -133,9 +130,6 @@ class ClanSettingsScreen(Screens):
                     break
 
     def screen_switches(self):
-        """
-        TODO: DOCS
-        """
         super().screen_switches()
         self.settings_changed = False
         self.show_menu_buttons()
@@ -228,14 +222,18 @@ class ClanSettingsScreen(Screens):
         self.opens[self.sub_menu]()
 
     def exit_screen(self):
-        """
-        TODO: DOCS
-        """
         rebuild_den_dropdown(
             left_align=not get_clan_setting("moons and seasons"),
             game_mode=game.clan.game_mode,
         )
         self.clear_sub_settings_buttons_and_text()
+        if hasattr(self, "export_thoughts_window") and self.export_thoughts_window is not None:
+            self.export_thoughts_window.kill()
+            self.export_thoughts_window = None
+        if hasattr(self, "export_thoughts_button") and self.export_thoughts_button is not None:
+            self.export_thoughts_button.kill()
+            self.export_thoughts_button = None
+
         self.general_settings_button.kill()
         del self.general_settings_button
         self.relation_settings_button.kill()
@@ -251,7 +249,6 @@ class ClanSettingsScreen(Screens):
         del self.fullscreen_toggle
 
     def open_general_settings(self):
-        """Opens and draws general_settings"""
         self.enable_all_menu_buttons()
         self.general_settings_button.disable()
         self.clear_sub_settings_buttons_and_text()
@@ -291,14 +288,9 @@ class ClanSettingsScreen(Screens):
             manager=MANAGER,
         )
 
-        # This is where the actual checkboxes are created. I don't like
-        #   how this is separated from the text boxes, but I've spent too much time to rewrite it.
-        #   It has to separated because the checkboxes must be updated when settings are changed.
-        #   Fix if you want. - keyraven
         self.refresh_checkboxes()
 
     def open_roles_settings(self):
-        """Opens and draws relation_settings"""
         self.enable_all_menu_buttons()
         self.role_settings_button.disable()
         self.clear_sub_settings_buttons_and_text()
@@ -313,7 +305,6 @@ class ClanSettingsScreen(Screens):
 
         n = 0
         for code, desc in settings_dict["role"].items():
-            # Handle nested
             x_val = 225
             if len(desc) == 4 and isinstance(desc[3], list):
                 x_val += 25
@@ -338,7 +329,6 @@ class ClanSettingsScreen(Screens):
         self.refresh_checkboxes()
 
     def open_relation_settings(self):
-        """Opens and draws relation_settings"""
         self.enable_all_menu_buttons()
         self.relation_settings_button.disable()
         self.clear_sub_settings_buttons_and_text()
@@ -435,7 +425,7 @@ class ClanSettingsScreen(Screens):
 
         self.checkboxes_text["stat_box"] = pygame_gui.elements.UITextBox(
             "screens.clan_settings.stats_text",
-            ui_scale(pygame.Rect((150, 200), (530, 345))),
+            ui_scale(pygame.Rect((150, 195), (530, 345))),
             object_id=get_text_box_theme("#text_box_30_horizcenter"),
             text_kwargs={
                 "living": str(living_cats),
@@ -454,11 +444,16 @@ class ClanSettingsScreen(Screens):
             },
         )
 
+        # Export Thoughts Button
+        self.export_thoughts_button = UISurfaceImageButton(
+            ui_scale(pygame.Rect((310, 555), (180, 32))),
+            "Export Thoughts",
+            get_button_dict(ButtonStyles.SQUOVAL, (180, 32)),
+            object_id="@buttonstyles_squoval",
+            manager=MANAGER,
+        )
+
     def refresh_checkboxes(self):
-        """
-        TODO: DOCS
-        """
-        # Kill the checkboxes. No mercy here.
         for checkbox in self.checkboxes.values():
             checkbox.kill()
         self.checkboxes = {}
@@ -470,7 +465,6 @@ class ClanSettingsScreen(Screens):
             else:
                 box_type = "@unchecked_checkbox"
 
-            # Handle nested
             disabled = False
             x_val = 170
             if len(desc) == 4 and isinstance(desc[3], list):
@@ -493,27 +487,21 @@ class ClanSettingsScreen(Screens):
             n += 1
 
     def clear_sub_settings_buttons_and_text(self):
-        """
-        TODO: DOCS
-        """
         for checkbox in self.checkboxes.values():
             checkbox.kill()
         self.checkboxes = {}
         for text in self.checkboxes_text.values():
             text.kill()
         self.checkboxes_text = {}
+        if hasattr(self, "export_thoughts_button") and self.export_thoughts_button is not None:
+            self.export_thoughts_button.kill()
+            self.export_thoughts_button = None
 
     def enable_all_menu_buttons(self):
-        """
-        TODO: DOCS
-        """
         self.general_settings_button.enable()
         self.relation_settings_button.enable()
         self.role_settings_button.enable()
         self.clan_stats_button.enable()
 
     def on_use(self):
-        """
-        TODO: DOCS
-        """
         super().on_use()
